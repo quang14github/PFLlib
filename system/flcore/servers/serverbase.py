@@ -7,7 +7,7 @@ import time
 import random
 from utils.data_utils import read_client_data
 from utils.dlg import DLG
-
+import wandb
 
 class Server(object):
     def __init__(self, args, times):
@@ -62,6 +62,8 @@ class Server(object):
         self.new_clients = []
         self.eval_new_clients = False
         self.fine_tuning_epoch_new = args.fine_tuning_epoch_new
+
+        self.timestamp = time.strftime("%Y%m%d-%H%M%S")
 
     def set_clients(self, clientObj):
         for i, train_slow, send_slow in zip(range(self.num_clients), self.train_slow_clients, self.send_slow_clients):
@@ -153,7 +155,7 @@ class Server(object):
         model_path = os.path.join("models", self.dataset)
         if not os.path.exists(model_path):
             os.makedirs(model_path)
-        model_path = os.path.join(model_path, self.algorithm + "_server" + ".pt")
+        model_path = os.path.join(model_path, self.algorithm + "_server" + "_" + self.timestamp + ".pt")
         torch.save(self.global_model, model_path)
 
     def load_model(self):
@@ -174,7 +176,7 @@ class Server(object):
             os.makedirs(result_path)
 
         if (len(self.rs_test_acc)):
-            algo = algo + "_" + self.goal + "_" + str(self.times)
+            algo = algo + "_" + self.goal + "_" + str(self.times) + "_" + self.timestamp
             file_path = result_path + "{}.h5".format(algo)
             print("File path: " + file_path)
 
@@ -191,7 +193,7 @@ class Server(object):
     def load_item(self, item_name):
         return torch.load(os.path.join(self.save_folder_name, "server_" + item_name + ".pt"))
 
-    def test_metrics(self):
+    def test_metrics(self, glob_iter):
         if self.eval_new_clients and self.num_new_clients > 0:
             self.fine_tuning_new_clients()
             return self.test_metrics_new_clients()
@@ -204,6 +206,10 @@ class Server(object):
             tot_correct.append(ct*1.0)
             tot_auc.append(auc*ns)
             num_samples.append(ns)
+            test_acc = sum(tot_correct)*1.0 / sum(num_samples)
+            log_key = f"Client_{c.id}/Test_Accuracy"
+            if self.args.use_wandb:
+                wandb.log({log_key: test_acc}, step=glob_iter)
 
         ids = [c.id for c in self.clients]
 
@@ -225,8 +231,8 @@ class Server(object):
         return ids, num_samples, losses
 
     # evaluate selected clients
-    def evaluate(self, acc=None, loss=None):
-        stats = self.test_metrics()
+    def evaluate(self, glob_iter, acc=None, loss=None):
+        stats = self.test_metrics(glob_iter)
         stats_train = self.train_metrics()
 
         test_acc = sum(stats[2])*1.0 / sum(stats[1])
@@ -244,6 +250,13 @@ class Server(object):
             self.rs_train_loss.append(train_loss)
         else:
             loss.append(train_loss)
+        
+        log_keys = {
+            "Averaged Train Loss": train_loss,
+            "Averaged Test Accuracy": test_acc,
+        }
+        if self.args.use_wandb:
+            wandb.log(log_keys, step=glob_iter)
 
         print("Averaged Train Loss: {:.4f}".format(train_loss))
         print("Averaged Test Accuracy: {:.4f}".format(test_acc))

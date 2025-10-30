@@ -30,6 +30,7 @@ from flcore.servers.servermoon import MOON
 from flcore.servers.serverbabu import FedBABU
 from flcore.servers.serverapple import APPLE
 from flcore.servers.servergen import FedGen
+from flcore.servers.servermultigen import FedMultiGen
 from flcore.servers.serverscaffold import SCAFFOLD
 from flcore.servers.serverfd import FD
 from flcore.servers.serverala import FedALA
@@ -67,8 +68,18 @@ logger.setLevel(logging.ERROR)
 warnings.simplefilter("ignore")
 torch.manual_seed(0)
 
+import wandb
 
 def run(args):
+    if args.use_wandb:
+        print("Using Weights & Biases for experiment tracking.")
+        wandb.login(key="3adf2773484ef1efea9ed5340219e57f5d7dff51")
+        wandb.init(
+            project="MultiGenFedUnlearn",
+            entity="qduongminh3tcd",
+            config=args, 
+            name=f"{args.dataset}_{args.model}_{args.algorithm}_lr{args.local_learning_rate}", 
+        )
 
     time_list = []
     reporter = MemReporter()
@@ -272,6 +283,12 @@ def run(args):
             args.model.fc = nn.Identity()
             args.model = BaseHeadSplit(args.model, args.head)
             server = FedGen(args, i)
+        
+        elif args.algorithm == "FedMultiGen":
+            args.head = copy.deepcopy(args.model.fc)
+            args.model.fc = nn.Identity()
+            args.model = BaseHeadSplit(args.model, args.head)
+            server = FedMultiGen(args, i)
 
         elif args.algorithm == "SCAFFOLD":
             server = SCAFFOLD(args, i)
@@ -498,6 +515,9 @@ if __name__ == "__main__":
     parser.add_argument('-ca', "--fedcross_alpha", type=float, default=0.99)
     parser.add_argument('-cmss', "--collaberative_model_select_strategy", type=int, default=1)
 
+    # wandb
+    parser.add_argument('-wb', "--use_wandb", type=bool, default=False,
+                        help="Whether to use wandb to track experiments.")
 
     args = parser.parse_args()
 
