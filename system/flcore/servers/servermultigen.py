@@ -53,7 +53,10 @@ class FedMultiGen(Server):
             for optimizer in self.generative_optimizers
         ]
         self.loss = nn.CrossEntropyLoss()
-
+        self.global_loss = nn.CrossEntropyLoss()
+        self.optimizer = torch.optim.SGD(self.global_model.parameters(), lr=self.learning_rate)
+        self.global_batch_size = args.global_batch_size
+        self.global_epochs = args.global_epochs
         for client in self.clients:
             for yy in range(self.num_classes):
                 client.qualified_labels.extend(
@@ -91,6 +94,8 @@ class FedMultiGen(Server):
                 self.call_dlg(i)
             self.train_generator(glob_iter)
             self.aggregate_parameters()
+ 
+            self.train_global_model()
 
             self.Budget.append(time.time() - s_t)
             print("-" * 25, "time cost", "-" * 25, self.Budget[-1])
@@ -164,7 +169,6 @@ class FedMultiGen(Server):
     def train_generator(self, glob_iter):
         for i, client_id in enumerate(self.uploaded_ids):
             self.generative_models[client_id].train()
-            losses = []
             for _ in range(self.server_epochs):
                 labels = np.random.choice(
                     self.clients[client_id].qualified_labels, self.batch_size
@@ -182,13 +186,8 @@ class FedMultiGen(Server):
 
                 self.generative_optimizers[client_id].zero_grad()
                 loss = self.loss(logits, labels)
-                losses.append(loss.item())
                 loss.backward()
                 self.generative_optimizers[client_id].step()
-            log_key = f"Client_{client_id}/Generator_Loss"
-            avg_loss = sum(losses) / len(losses)
-            if self.use_wandb:
-                wandb.log({log_key: avg_loss}, step=glob_iter)
             if self.learning_rate_decay:
                 self.generative_learning_rate_schedulers[client_id].step()
 
@@ -214,6 +213,37 @@ class FedMultiGen(Server):
                     opt.zero_grad()
                     loss.backward()
                     opt.step()
+
+    def train_global_model(self):
+        # train global model with synthetic data from generators 
+        # create a synthetic dataset
+        synthetic_data = []
+        synthetic_labels = []
+        for client_id in self.uploaded_ids:
+            labels = np.random.choice(self.clients[client_id].qualified_labels, self.batch_size)
+            labels = torch.LongTensor(labels).to(self.device)
+            z = self.generative_models[client_id](labels)
+            synthetic_data.append(z)
+            synthetic_labels.append(labels)
+        synthetic_data = torch.cat(synthetic_data, dim=0)
+        synthetic_labels = torch.cat(synthetic_labels, dim=0)
+        # divide into batches
+        synthetic_dataset = torch.utils.data.TensorDataset(synthetic_data, synthetic_labels)
+        synthetic_dataloader = torch.utils.data.DataLoader(synthetic_dataset, batch_size=self.global_batch_size, shuffle=True) 
+        # train global model
+        self.global_model.train()   
+        for epoch in range(self.global_epochs):
+            for (x, y) in synthetic_dataloader:
+                if type(x) == type([]):
+                        x[0] = x[0].to(self.device)
+                else:
+                    x = x.to(self.device)
+                y = y.to(self.device)
+                output = self.global_model.head(x)
+                loss = self.global_loss(output, y)
+                self.optimizer.zero_grad()
+                loss.backward(retain_graph=True)
+                self.optimizer.step()
 
 
 # based on official code https://github.com/zhuangdizhu/FedGen/blob/main/FLAlgorithms/trainmodel/generator.py

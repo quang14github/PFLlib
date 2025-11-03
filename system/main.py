@@ -518,6 +518,11 @@ if __name__ == "__main__":
     # wandb
     parser.add_argument('-wb', "--use_wandb", type=bool, default=False,
                         help="Whether to use wandb to track experiments.")
+    # FedMultiGen
+    parser.add_argument('-gbs', "--global_batch_size", type=int, default=32,
+                        help="Set this for FedMultiGen algorithm.")
+    parser.add_argument('-ge', "--global_epochs", type=int, default=2,
+                        help="Number of epochs to train the global model in each round for FedMultiGen.")
 
     args = parser.parse_args()
 
