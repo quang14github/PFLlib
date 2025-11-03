@@ -55,6 +55,7 @@ class FedGen(Server):
 
     def train(self):
         for i in range(self.global_rounds+1):
+            glob_iter = i
             s_t = time.time()
             self.selected_clients = self.select_clients()
             self.send_models()
@@ -62,7 +63,7 @@ class FedGen(Server):
             if i%self.eval_gap == 0:
                 print(f"\n-------------Round number: {i}-------------")
                 print("\nEvaluate global model")
-                self.evaluate()
+                self.evaluate(glob_iter)
 
             for client in self.selected_clients:
                 client.train()
