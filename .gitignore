@@ -1,3 +1,7 @@
 /results
 /system/models
 *__pycache__*
+/system/wandb
+/dataset/Cifar10
+/dataset/MNIST
+/dataset/DomainNet
