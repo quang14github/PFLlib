@@ -5,7 +5,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from flcore.clients.clientgen import clientGen
+from flcore.clients.clientmultigen import clientMultiGen
 from flcore.servers.serverbase import Server
 from threading import Thread
 import wandb
@@ -16,7 +16,7 @@ class FedMultiGen(Server):
 
         # select slow clients
         self.set_slow_clients()
-        self.set_clients(clientGen)
+        self.set_clients(clientMultiGen)
 
         print(f"\nJoin ratio / total clients: {self.join_ratio} / {self.num_clients}")
         print("Finished creating server and clients.")

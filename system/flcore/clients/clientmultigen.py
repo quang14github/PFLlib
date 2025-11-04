@@ -4,7 +4,7 @@ import time
 from flcore.clients.clientbase import Client
 
 
-class clientGen(Client):
+class clientMultiGen(Client):
     def __init__(self, args, id, train_samples, test_samples, **kwargs):
         super().__init__(args, id, train_samples, test_samples, **kwargs)
 
@@ -54,10 +54,10 @@ class clientGen(Client):
                 output = self.model(x)
                 loss = self.loss(output, y)
                 
-                labels = np.random.choice(self.qualified_labels, self.batch_size)
-                labels = torch.LongTensor(labels).to(self.device)
-                z = self.generative_model(labels)
-                loss += self.loss(self.model.head(z), labels)
+                # labels = np.random.choice(self.qualified_labels, self.batch_size)
+                # labels = torch.LongTensor(labels).to(self.device)
+                # z = self.generative_model(labels)
+                # loss += self.loss(self.model.head(z), labels)
 
                 self.optimizer.zero_grad()
                 loss.backward()
@@ -100,10 +100,10 @@ class clientGen(Client):
                 output = self.model(x)
                 loss = self.loss(output, y)
                 
-                labels = np.random.choice(self.qualified_labels, self.batch_size)
-                labels = torch.LongTensor(labels).to(self.device)
-                z = self.generative_model(labels)
-                loss += self.loss(self.model.head(z), labels)
+                # labels = np.random.choice(self.qualified_labels, self.batch_size)
+                # labels = torch.LongTensor(labels).to(self.device)
+                # z = self.generative_model(labels)
+                # loss += self.loss(self.model.head(z), labels)
                 
                 train_num += y.shape[0]
                 losses += loss.item() * y.shape[0]
