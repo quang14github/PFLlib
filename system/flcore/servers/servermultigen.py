@@ -57,13 +57,15 @@ class FedMultiGen(Server):
         self.optimizer = torch.optim.SGD(self.global_model.parameters(), lr=self.learning_rate)
         self.global_batch_size = args.global_batch_size
         self.global_epochs = args.global_epochs
+        self.activate_diversity = args.activate_diversity
+        self.cold_start = args.cold_start
         for client in self.clients:
             for yy in range(self.num_classes):
                 client.qualified_labels.extend(
                     [yy for _ in range(int(client.sample_per_class[yy].item()))]
                 )
 
-        self.server_epochs = args.server_epochs
+        self.generator_train_epochs = args.generator_train_epochs
         self.localize_feature_extractor = args.localize_feature_extractor
         if self.localize_feature_extractor:
             self.global_model = copy.deepcopy(args.model.head)
@@ -95,7 +97,8 @@ class FedMultiGen(Server):
             self.train_generator(glob_iter)
             self.aggregate_parameters()
  
-            self.train_global_model()
+            if glob_iter >= self.cold_start:
+                self.train_global_model()
 
             self.Budget.append(time.time() - s_t)
             print("-" * 25, "time cost", "-" * 25, self.Budget[-1])
@@ -117,7 +120,7 @@ class FedMultiGen(Server):
 
         if self.num_new_clients > 0:
             self.eval_new_clients = True
-            self.set_new_clients(clientGen)
+            self.set_new_clients(clientMultiGen)
             print(f"\n-------------Fine tuning round-------------")
             print("\nEvaluate new clients")
             self.evaluate()
@@ -169,12 +172,17 @@ class FedMultiGen(Server):
     def train_generator(self, glob_iter):
         for i, client_id in enumerate(self.uploaded_ids):
             self.generative_models[client_id].train()
-            for _ in range(self.server_epochs):
+            for _ in range(self.generator_train_epochs):
                 labels = np.random.choice(
                     self.clients[client_id].qualified_labels, self.batch_size
                 )
                 labels = torch.LongTensor(labels).to(self.device)
-                z = self.generative_models[client_id](labels)
+                gen_result = self.generative_models[client_id](labels, verbose=True)
+                z = gen_result['output']
+                eps = gen_result['eps']
+                diversity_loss = self.generative_models[client_id].diversity_loss(
+                    eps, z
+                )
 
                 logits = 0
                 model = self.uploaded_models[i]
@@ -183,9 +191,11 @@ class FedMultiGen(Server):
                     logits += model(z)
                 else:
                     logits += model.head(z)
-
+                teacher_loss = self.loss(logits, labels)
                 self.generative_optimizers[client_id].zero_grad()
-                loss = self.loss(logits, labels)
+                loss = teacher_loss
+                if self.activate_diversity:
+                    loss += diversity_loss
                 loss.backward()
                 self.generative_optimizers[client_id].step()
             if self.learning_rate_decay:
@@ -222,7 +232,7 @@ class FedMultiGen(Server):
         for client_id in self.uploaded_ids:
             labels = np.random.choice(self.clients[client_id].qualified_labels, self.batch_size)
             labels = torch.LongTensor(labels).to(self.device)
-            z = self.generative_models[client_id](labels)
+            z = self.generative_models[client_id](labels)['output']
             synthetic_data.append(z)
             synthetic_labels.append(labels)
         synthetic_data = torch.cat(synthetic_data, dim=0)
@@ -254,7 +264,7 @@ class Generative(nn.Module):
         self.noise_dim = noise_dim
         self.num_classes = num_classes
         self.device = device
-
+        self.diversity_loss = DiversityLoss(metric='l1')
         self.fc1 = nn.Sequential(
             nn.Linear(noise_dim + num_classes, hidden_dim),
             nn.BatchNorm1d(hidden_dim),
@@ -263,16 +273,62 @@ class Generative(nn.Module):
 
         self.fc = nn.Linear(hidden_dim, feature_dim)
 
-    def forward(self, labels):
+    def forward(self, labels, verbose = True):
+        result = {}
         batch_size = labels.shape[0]
         eps = torch.rand(
             (batch_size, self.noise_dim), device=self.device
         )  # sampling from Gaussian
-
+        if verbose:
+            result['eps'] = eps
         y_input = F.one_hot(labels, self.num_classes)
         z = torch.cat((eps, y_input), dim=1)
 
         z = self.fc1(z)
         z = self.fc(z)
+        result['output'] = z
+        return result
 
-        return z
+class DiversityLoss(nn.Module):
+    """
+    Diversity loss for improving the performance.
+    """
+    def __init__(self, metric):
+        """
+        Class initializer.
+        """
+        super().__init__()
+        self.metric = metric
+        self.cosine = nn.CosineSimilarity(dim=2)
+
+    def compute_distance(self, tensor1, tensor2, metric):
+        """
+        Compute the distance between two tensors.
+        """
+        if metric == 'l1':
+            return torch.abs(tensor1 - tensor2).mean(dim=(2,))
+        elif metric == 'l2':
+            return torch.pow(tensor1 - tensor2, 2).mean(dim=(2,))
+        elif metric == 'cosine':
+            return 1 - self.cosine(tensor1, tensor2)
+        else:
+            raise ValueError(metric)
+
+    def pairwise_distance(self, tensor, how):
+        """
+        Compute the pairwise distances between a Tensor's rows.
+        """
+        n_data = tensor.size(0)
+        tensor1 = tensor.expand((n_data, n_data, tensor.size(1)))
+        tensor2 = tensor.unsqueeze(dim=1)
+        return self.compute_distance(tensor1, tensor2, how)
+
+    def forward(self, noises, layer):
+        """
+        Forward propagation.
+        """
+        if len(layer.shape) > 2:
+            layer = layer.view((layer.size(0), -1))
+        layer_dist = self.pairwise_distance(layer, how=self.metric)
+        noise_dist = self.pairwise_distance(noises, how='l2')
+        return torch.exp(torch.mean(-noise_dist * layer_dist))
