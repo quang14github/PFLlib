@@ -2,7 +2,7 @@ import torch
 import numpy as np
 import time
 from flcore.clients.clientbase import Client
-
+import wandb
 
 class clientMultiGen(Client):
     def __init__(self, args, id, train_samples, test_samples, **kwargs):
@@ -29,6 +29,9 @@ class clientMultiGen(Client):
         self.qualified_labels = []
         self.generative_model = None
         self.localize_feature_extractor = args.localize_feature_extractor
+        self.kl_loss = torch.nn.KLDivLoss(reduction='batchmean')
+        self.use_wandb = args.use_wandb
+        self.cold_start = args.cold_start
         
 
     def train(self):
@@ -53,11 +56,6 @@ class clientMultiGen(Client):
                     time.sleep(0.1 * np.abs(np.random.rand()))
                 output = self.model(x)
                 loss = self.loss(output, y)
-                
-                # labels = np.random.choice(self.qualified_labels, self.batch_size)
-                # labels = torch.LongTensor(labels).to(self.device)
-                # z = self.generative_model(labels)
-                # loss += self.loss(self.model.head(z), labels)
 
                 self.optimizer.zero_grad()
                 loss.backward()
@@ -82,7 +80,7 @@ class clientMultiGen(Client):
 
         self.generative_model = generative_model
 
-    def train_metrics(self):
+    def train_metrics(self, glob_iter):
         trainloader = self.load_train_data()
         # self.model = self.load_model('model')
         # self.model.to(self.device)
@@ -90,6 +88,7 @@ class clientMultiGen(Client):
 
         train_num = 0
         losses = 0
+        LATENT_LOSS = 0.0
         with torch.no_grad():
             for x, y in trainloader:
                 if type(x) == type([]):
@@ -98,17 +97,29 @@ class clientMultiGen(Client):
                     x = x.to(self.device)
                 y = y.to(self.device)
                 output = self.model(x)
+                p_output = torch.log_softmax(output, dim=1).clone().detach()
                 loss = self.loss(output, y)
-                
-                # labels = np.random.choice(self.qualified_labels, self.batch_size)
-                # labels = torch.LongTensor(labels).to(self.device)
-                # z = self.generative_model(labels)
-                # loss += self.loss(self.model.head(z), labels)
+                # only compute latent loss after first global iteration because the generator is not trained yet
+                if glob_iter > 0:
+                    z = self.generative_model(y)['output']
+                    y_given_gen = self.model.head(z)
+                    p_output_given_gen = torch.softmax(y_given_gen, dim=1).clone().detach()
+                    # Compute the KL divergence loss
+                    latent_loss = self.kl_loss(p_output, p_output_given_gen)
+                    LATENT_LOSS += latent_loss.item() * y.shape[0]
                 
                 train_num += y.shape[0]
                 losses += loss.item() * y.shape[0]
+  
 
         # self.model.cpu()
         # self.save_model(self.model, 'model')
 
+        if self.use_wandb:
+            log_key = f'Client_{self.id}/Train_Loss'
+            wandb.log({log_key: losses / train_num}, step=glob_iter)
+            if glob_iter > 0:
+                LATENT_LOSS = LATENT_LOSS / train_num
+                log_key = f'Client_{self.id}/Latent_Loss'
+                wandb.log({log_key: LATENT_LOSS}, step=glob_iter)
         return losses, train_num

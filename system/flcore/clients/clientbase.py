@@ -119,7 +119,7 @@ class Client(object):
         
         return test_acc, test_num, auc
 
-    def train_metrics(self):
+    def train_metrics(self, glob_iter):
         trainloader = self.load_train_data()
         # self.model = self.load_model('model')
         # self.model.to(self.device)

@@ -215,14 +215,14 @@ class Server(object):
 
         return ids, num_samples, tot_correct, tot_auc
 
-    def train_metrics(self):
+    def train_metrics(self, glob_iter):
         if self.eval_new_clients and self.num_new_clients > 0:
             return [0], [1], [0]
         
         num_samples = []
         losses = []
         for c in self.clients:
-            cl, ns = c.train_metrics()
+            cl, ns = c.train_metrics(glob_iter)
             num_samples.append(ns)
             losses.append(cl*1.0)
 
@@ -233,7 +233,7 @@ class Server(object):
     # evaluate selected clients
     def evaluate(self, glob_iter, acc=None, loss=None):
         stats = self.test_metrics(glob_iter)
-        stats_train = self.train_metrics()
+        stats_train = self.train_metrics(glob_iter)
 
         test_acc = sum(stats[2])*1.0 / sum(stats[1])
         test_auc = sum(stats[3])*1.0 / sum(stats[1])
