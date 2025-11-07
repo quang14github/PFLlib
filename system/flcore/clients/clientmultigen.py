@@ -85,7 +85,7 @@ class clientMultiGen(Client):
         # self.model = self.load_model('model')
         # self.model.to(self.device)
         self.model.eval()
-
+        self.generative_model.eval()
         train_num = 0
         losses = 0
         LATENT_LOSS = 0.0

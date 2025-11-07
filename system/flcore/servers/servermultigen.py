@@ -174,16 +174,17 @@ class FedMultiGen(Server):
         for i, client_id in enumerate(self.uploaded_ids):
             self.generative_models[client_id].train()
             for _ in range(self.generator_train_epochs):
-                labels = np.random.choice(
-                    self.clients[client_id].qualified_labels, self.batch_size
-                )
-                labels = torch.LongTensor(labels).to(self.device)
-                gen_result = self.generative_models[client_id](labels, verbose=True)
-                z = gen_result['output']
-                eps = gen_result['eps']
-                diversity_loss = self.generative_models[client_id].diversity_loss(
-                    eps, z
-                )
+                if self.activate_diversity:
+                    labels = np.random.choice(
+                        self.clients[client_id].qualified_labels, self.batch_size
+                    )
+                    labels = torch.LongTensor(labels).to(self.device)
+                    gen_result = self.generative_models[client_id](labels, verbose=True)
+                    z = gen_result['output']
+                    eps = gen_result['eps']
+                    diversity_loss = self.generative_models[client_id].diversity_loss(
+                        eps, z
+                    )
 
                 logits = 0
                 model = self.uploaded_models[i]

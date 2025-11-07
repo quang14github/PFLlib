@@ -417,15 +417,15 @@ if __name__ == "__main__":
     parser.add_argument('-data', "--dataset", type=str, default="MNIST")
     parser.add_argument('-ncl', "--num_classes", type=int, default=10)
     parser.add_argument('-m', "--model", type=str, default="CNN")
-    parser.add_argument('-lbs', "--batch_size", type=int, default=64)
-    parser.add_argument('-lr', "--local_learning_rate", type=float, default=1e-4,
+    parser.add_argument('-lbs', "--batch_size", type=int, default=8)
+    parser.add_argument('-lr', "--local_learning_rate", type=float, default=0.005,
                         help="Local learning rate")
     parser.add_argument('-ld', "--learning_rate_decay", type=bool, default=False)
     parser.add_argument('-ldg', "--learning_rate_decay_gamma", type=float, default=0.98)
     parser.add_argument('-gr', "--global_rounds", type=int, default=2000)
     parser.add_argument('-tc', "--top_cnt", type=int, default=100, 
                         help="For auto_break")
-    parser.add_argument('-ls', "--local_epochs", type=int, default=10, 
+    parser.add_argument('-ls', "--local_epochs", type=int, default=1, 
                         help="Multiple update steps in one local epoch.")
     parser.add_argument('-algo', "--algorithm", type=str, default="FedAvg")
     parser.add_argument('-jr', "--join_ratio", type=float, default=1.0,
@@ -497,7 +497,7 @@ if __name__ == "__main__":
     parser.add_argument('-nd', "--noise_dim", type=int, default=512)
     parser.add_argument('-glr', "--generator_learning_rate", type=float, default=0.005)
     parser.add_argument('-hd', "--hidden_dim", type=int, default=512)
-    parser.add_argument('-se', "--generator_train_epochs", type=int, default=10)
+    parser.add_argument('-se', "--generator_train_epochs", type=int, default=20)
     parser.add_argument('-lf', "--localize_feature_extractor", type=bool, default=False)
     # SCAFFOLD / FedGH
     parser.add_argument('-slr', "--server_learning_rate", type=float, default=1.0)
@@ -523,11 +523,11 @@ if __name__ == "__main__":
     parser.add_argument('-wb', "--use_wandb", type=bool, default=False,
                         help="Whether to use wandb to track experiments.")
     # FedMultiGen
-    parser.add_argument('-gbs', "--global_batch_size", type=int, default=16,
+    parser.add_argument('-gbs', "--global_batch_size", type=int, default=32,
                         help="Set this for FedMultiGen algorithm.")
-    parser.add_argument('-ge', "--global_epochs", type=int, default=10,
+    parser.add_argument('-ge', "--global_epochs", type=int, default=5,
                         help="Number of epochs to train the global model in each round for FedMultiGen.")
-    parser.add_argument('-cs', "--cold_start", type=int, default=2,
+    parser.add_argument('-cs', "--cold_start", type=int, default=5,
                         help="Number of rounds to only train the generative model before training the global model for FedMultiGen.")
     parser.add_argument('-adv', "--activate_diversity", type=bool, default=True,
                         help="Whether to activate diversity loss for generative model training in FedMultiGen.")
