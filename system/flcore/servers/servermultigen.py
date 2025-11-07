@@ -9,6 +9,7 @@ from flcore.clients.clientmultigen import clientMultiGen
 from flcore.servers.serverbase import Server
 from threading import Thread
 import wandb
+from flcore.trainmodel.generator import Generative
 
 class FedMultiGen(Server):
     def __init__(self, args, times):
@@ -256,79 +257,79 @@ class FedMultiGen(Server):
                 self.optimizer.step()
 
 
-# based on official code https://github.com/zhuangdizhu/FedGen/blob/main/FLAlgorithms/trainmodel/generator.py
-class Generative(nn.Module):
-    def __init__(self, noise_dim, num_classes, hidden_dim, feature_dim, device) -> None:
-        super().__init__()
+# # based on official code https://github.com/zhuangdizhu/FedGen/blob/main/FLAlgorithms/trainmodel/generator.py
+# class Generative(nn.Module):
+#     def __init__(self, noise_dim, num_classes, hidden_dim, feature_dim, device) -> None:
+#         super().__init__()
 
-        self.noise_dim = noise_dim
-        self.num_classes = num_classes
-        self.device = device
-        self.diversity_loss = DiversityLoss(metric='l1')
-        self.fc1 = nn.Sequential(
-            nn.Linear(noise_dim + num_classes, hidden_dim),
-            nn.BatchNorm1d(hidden_dim),
-            nn.ReLU(),
-        )
+#         self.noise_dim = noise_dim
+#         self.num_classes = num_classes
+#         self.device = device
+#         self.diversity_loss = DiversityLoss(metric='l1')
+#         self.fc1 = nn.Sequential(
+#             nn.Linear(noise_dim + num_classes, hidden_dim),
+#             nn.BatchNorm1d(hidden_dim),
+#             nn.ReLU(),
+#         )
 
-        self.fc = nn.Linear(hidden_dim, feature_dim)
+#         self.fc = nn.Linear(hidden_dim, feature_dim)
 
-    def forward(self, labels, verbose = True):
-        result = {}
-        batch_size = labels.shape[0]
-        eps = torch.rand(
-            (batch_size, self.noise_dim), device=self.device
-        )  # sampling from Gaussian
-        if verbose:
-            result['eps'] = eps
-        y_input = F.one_hot(labels, self.num_classes)
-        z = torch.cat((eps, y_input), dim=1)
+#     def forward(self, labels, verbose = True):
+#         result = {}
+#         batch_size = labels.shape[0]
+#         eps = torch.rand(
+#             (batch_size, self.noise_dim), device=self.device
+#         )  # sampling from Gaussian
+#         if verbose:
+#             result['eps'] = eps
+#         y_input = F.one_hot(labels, self.num_classes)
+#         z = torch.cat((eps, y_input), dim=1)
 
-        z = self.fc1(z)
-        z = self.fc(z)
-        result['output'] = z
-        return result
+#         z = self.fc1(z)
+#         z = self.fc(z)
+#         result['output'] = z
+#         return result
 
-class DiversityLoss(nn.Module):
-    """
-    Diversity loss for improving the performance.
-    """
-    def __init__(self, metric):
-        """
-        Class initializer.
-        """
-        super().__init__()
-        self.metric = metric
-        self.cosine = nn.CosineSimilarity(dim=2)
+# class DiversityLoss(nn.Module):
+#     """
+#     Diversity loss for improving the performance.
+#     """
+#     def __init__(self, metric):
+#         """
+#         Class initializer.
+#         """
+#         super().__init__()
+#         self.metric = metric
+#         self.cosine = nn.CosineSimilarity(dim=2)
 
-    def compute_distance(self, tensor1, tensor2, metric):
-        """
-        Compute the distance between two tensors.
-        """
-        if metric == 'l1':
-            return torch.abs(tensor1 - tensor2).mean(dim=(2,))
-        elif metric == 'l2':
-            return torch.pow(tensor1 - tensor2, 2).mean(dim=(2,))
-        elif metric == 'cosine':
-            return 1 - self.cosine(tensor1, tensor2)
-        else:
-            raise ValueError(metric)
+#     def compute_distance(self, tensor1, tensor2, metric):
+#         """
+#         Compute the distance between two tensors.
+#         """
+#         if metric == 'l1':
+#             return torch.abs(tensor1 - tensor2).mean(dim=(2,))
+#         elif metric == 'l2':
+#             return torch.pow(tensor1 - tensor2, 2).mean(dim=(2,))
+#         elif metric == 'cosine':
+#             return 1 - self.cosine(tensor1, tensor2)
+#         else:
+#             raise ValueError(metric)
 
-    def pairwise_distance(self, tensor, how):
-        """
-        Compute the pairwise distances between a Tensor's rows.
-        """
-        n_data = tensor.size(0)
-        tensor1 = tensor.expand((n_data, n_data, tensor.size(1)))
-        tensor2 = tensor.unsqueeze(dim=1)
-        return self.compute_distance(tensor1, tensor2, how)
+#     def pairwise_distance(self, tensor, how):
+#         """
+#         Compute the pairwise distances between a Tensor's rows.
+#         """
+#         n_data = tensor.size(0)
+#         tensor1 = tensor.expand((n_data, n_data, tensor.size(1)))
+#         tensor2 = tensor.unsqueeze(dim=1)
+#         return self.compute_distance(tensor1, tensor2, how)
 
-    def forward(self, noises, layer):
-        """
-        Forward propagation.
-        """
-        if len(layer.shape) > 2:
-            layer = layer.view((layer.size(0), -1))
-        layer_dist = self.pairwise_distance(layer, how=self.metric)
-        noise_dist = self.pairwise_distance(noises, how='l2')
-        return torch.exp(torch.mean(-noise_dist * layer_dist))
+#     def forward(self, noises, layer):
+#         """
+#         Forward propagation.
+#         """
+#         if len(layer.shape) > 2:
+#             layer = layer.view((layer.size(0), -1))
+#         layer_dist = self.pairwise_distance(layer, how=self.metric)
+#         noise_dist = self.pairwise_distance(noises, how='l2')
+#         return torch.exp(torch.mean(-noise_dist * layer_dist))
